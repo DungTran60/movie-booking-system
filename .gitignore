@@ -2,6 +2,13 @@
 backend/target/
 **/target/
 
+# Node.js / Frontend
+frontend/node_modules/
+**/node_modules/
+frontend/dist/
+frontend/.env.local
+frontend/.env.*.local
+
 # IDEs and Editors
 .idea/
 *.iml
