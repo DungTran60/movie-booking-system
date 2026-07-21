@@ -1,0 +1,14 @@
+package com.moviebooking.common.exception;
+
+import com.moviebooking.common.dto.response.ErrorCode;
+import lombok.Getter;
+
+@Getter
+public class AppException extends RuntimeException {
+    private final ErrorCode errorCode;
+
+    public AppException(ErrorCode errorCode, String message) {
+        super(message);
+        this.errorCode = errorCode;
+    }
+}
