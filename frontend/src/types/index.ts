@@ -1,10 +1,18 @@
 // Global TypeScript types
 // Thêm các interface/type dùng chung cho toàn bộ project vào đây
 
-export interface ApiResponse<T> {
-  data: T
+export interface ValidationError {
+  field: string
   message: string
-  success: boolean
+}
+
+export interface ApiResponse<T> {
+  status: 'SUCCESS' | 'ERROR'
+  code: string
+  message: string
+  data?: T
+  errors?: ValidationError[]
+  timestamp: string
 }
 
 export interface PaginatedResponse<T> {
