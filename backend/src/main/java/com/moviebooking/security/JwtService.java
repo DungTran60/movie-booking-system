@@ -34,6 +34,22 @@ public class JwtService {
         return extractClaim(token, Claims::getSubject);
     }
 
+    public String extractTokenFamilyId(String token) {
+        return extractClaim(token, claims -> claims.get("tokenFamilyId", String.class));
+    }
+
+    public String extractRole(String token) {
+        return extractClaim(token, claims -> claims.get("role", String.class));
+    }
+
+    public Long extractTenantId(String token) {
+        Object tenantId = extractAllClaims(token).get("tenantId");
+        if (tenantId instanceof Number) {
+            return ((Number) tenantId).longValue();
+        }
+        return null;
+    }
+
     public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
         final Claims claims = extractAllClaims(token);
         return claimsResolver.apply(claims);
@@ -79,11 +95,15 @@ public class JwtService {
         return (subject.equals(expectedSubject)) && !isTokenExpired(token);
     }
 
-    private boolean isTokenExpired(String token) {
-        return extractExpiration(token).before(new Date());
+    public boolean isTokenExpired(String token) {
+        try {
+            return extractExpiration(token).before(new Date());
+        } catch (Exception e) {
+            return true;
+        }
     }
 
-    private Date extractExpiration(String token) {
+    public Date extractExpiration(String token) {
         return extractClaim(token, Claims::getExpiration);
     }
 
