@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import api from '@/services/api'
 import { decodeJwt } from '@/utils/jwt'
+import { useAuth } from '@/context/AuthContext'
 import type { ApiResponse } from '@/types'
 import type { AuthResponse } from '@/features/auth/types'
 
@@ -11,6 +12,8 @@ export default function LoginPage() {
   const [errors, setErrors] = useState<{ email?: string; password?: string; form?: string }>({})
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
+
+  const { login: authLogin } = useAuth()
 
   const validate = () => {
     const newErrors: typeof errors = {}
@@ -42,8 +45,7 @@ export default function LoginPage() {
       const envelope = response.data
       if (envelope.status === 'SUCCESS' && envelope.data) {
         const { accessToken, refreshToken } = envelope.data
-        localStorage.setItem('token', accessToken)
-        localStorage.setItem('refreshToken', refreshToken)
+        authLogin(accessToken, refreshToken)
 
         const decoded = decodeJwt(accessToken)
         const role = decoded?.role || 'CUSTOMER'
@@ -53,7 +55,8 @@ export default function LoginPage() {
         } else {
           navigate('/')
         }
-      } else {
+      }
+ else {
         setErrors({ form: envelope.message || 'Đăng nhập thất bại' })
       }
     } catch (error: any) {
