@@ -2,6 +2,7 @@ package com.moviebooking.config;
 
 import com.moviebooking.auth.repository.UserRepository;
 import com.moviebooking.security.JwtAuthenticationFilter;
+import com.moviebooking.security.LoginRateLimitFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -28,6 +29,7 @@ public class SecurityConfig {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtAuthenticationFilter jwtAuthFilter;
+    private final LoginRateLimitFilter loginRateLimitFilter;
 
     @Bean
     public UserDetailsService userDetailsService() {
@@ -61,6 +63,7 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authenticationProvider(authenticationProvider())
+                .addFilterBefore(loginRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
