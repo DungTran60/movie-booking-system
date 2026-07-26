@@ -33,7 +33,7 @@ export default function AppRouter() {
         <Route element={<MainLayout />}>
           {/* Public routes */}
           <Route path="/" element={<HomePage />} />
-          <Route path="/movies/:id" element={<MovieDetailPage />} />
+          <Route path="/movies/:slug" element={<MovieDetailPage />} />
 
           {/* Customer protected routes */}
           <Route element={<ProtectedRoute allowedRoles={['CUSTOMER', 'ADMIN', 'STAFF']} />}>
