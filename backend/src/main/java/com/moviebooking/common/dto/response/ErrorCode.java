@@ -6,6 +6,7 @@ package com.moviebooking.common.dto.response;
 public enum ErrorCode {
     SUCCESS,
     VALIDATION_ERROR,
+    RESOURCE_NOT_FOUND,
     AUTH_INVALID_CREDENTIALS,
     AUTH_TOKEN_EXPIRED,
     AUTH_REFRESH_REUSED,
