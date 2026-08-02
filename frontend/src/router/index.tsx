@@ -16,6 +16,7 @@ import UnauthorizedPage from '@/features/auth/pages/UnauthorizedPage'
 import BookingPage from '@/features/booking/pages/BookingPage'
 import PaymentPage from '@/features/payment/pages/PaymentPage'
 import TicketsPage from '@/features/ticket/pages/TicketsPage'
+import AdminDashboardPage from '@/features/admin/pages/AdminDashboardPage'
 
 export default function AppRouter() {
   return (
@@ -44,15 +45,7 @@ export default function AppRouter() {
 
           {/* Admin / Staff protected dashboard route */}
           <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'STAFF']} />}>
-            <Route
-              path="/dashboard"
-              element={
-                <div className="p-8 text-center bg-[#1B2140] rounded-xl border border-[#2A3157]">
-                  <h1 className="font-display text-2xl font-bold mb-2">Quản Trị Hệ Thống (Dashboard)</h1>
-                  <p className="text-[#B7BAC9] text-sm">Chào mừng Admin / Staff đến với bảng quản trị CineTicket.</p>
-                </div>
-              }
-            />
+            <Route path="/dashboard" element={<AdminDashboardPage />} />
           </Route>
         </Route>
 
