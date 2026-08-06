@@ -6,6 +6,7 @@ import com.moviebooking.movie.dto.request.CreateMovieRequest;
 import com.moviebooking.movie.dto.request.UpdateMovieRequest;
 import com.moviebooking.movie.dto.response.MovieDetailResponse;
 import com.moviebooking.movie.service.MovieService;
+import com.moviebooking.movie.service.TmdbService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.*;
 public class AdminMovieController {
 
     private final MovieService movieService;
+    private final TmdbService tmdbService;
 
     @PostMapping
     public ResponseEntity<ApiResponse<MovieDetailResponse>> createMovie(
@@ -28,6 +30,15 @@ public class AdminMovieController {
     ) {
         MovieDetailResponse response = movieService.createMovie(request, currentUser);
         return ResponseEntity.ok(ApiResponse.success(response, "Movie created successfully"));
+    }
+
+    @PostMapping("/import/tmdb/{tmdbId}")
+    public ResponseEntity<ApiResponse<MovieDetailResponse>> importMovieFromTmdb(
+            @PathVariable Long tmdbId,
+            @AuthenticationPrincipal User currentUser
+    ) {
+        MovieDetailResponse response = tmdbService.importMovieFromTmdb(tmdbId, currentUser);
+        return ResponseEntity.ok(ApiResponse.success(response, "Movie imported from TMDB successfully"));
     }
 
     @GetMapping("/{id}")
