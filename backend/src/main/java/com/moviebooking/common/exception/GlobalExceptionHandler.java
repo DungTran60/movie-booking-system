@@ -33,6 +33,8 @@ public class GlobalExceptionHandler {
             status = HttpStatus.FORBIDDEN;
         } else if (code == ErrorCode.RESOURCE_NOT_FOUND) {
             status = HttpStatus.NOT_FOUND;
+        } else if (code == ErrorCode.SHOWTIME_OVERLAP) {
+            status = HttpStatus.CONFLICT;
         } else if (code == ErrorCode.RATE_LIMIT_EXCEEDED) {
             status = HttpStatus.TOO_MANY_REQUESTS;
         }
