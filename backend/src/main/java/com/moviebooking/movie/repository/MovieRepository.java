@@ -15,6 +15,6 @@ public interface MovieRepository extends JpaRepository<Movie, Long> {
 
     Optional<Movie> findBySlug(String slug);
 
-    @Query("SELECT DISTINCT m FROM Movie m LEFT JOIN FETCH m.genres WHERE (:status IS NULL OR m.status = :status) AND (:search IS NULL OR LOWER(m.title) LIKE LOWER(CONCAT('%', :search, '%')))")
+    @Query("SELECT DISTINCT m FROM Movie m LEFT JOIN FETCH m.genres WHERE (:status IS NULL OR m.status = :status) AND (:search IS NULL OR LOWER(m.title) LIKE CONCAT('%', LOWER(:search), '%'))")
     Page<Movie> findByStatusAndSearch(@Param("status") String status, @Param("search") String search, Pageable pageable);
 }

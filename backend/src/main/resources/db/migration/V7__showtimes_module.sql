@@ -4,7 +4,7 @@
 
 CREATE TABLE showtimes (
     id          BIGSERIAL PRIMARY KEY,
-    tenant_id   BIGINT NOT NULL REFERENCES tenants(id),
+    tenant_id   BIGINT NOT NULL REFERENCES tenant(id),
     movie_id    BIGINT NOT NULL REFERENCES movies(id),
     room_id     BIGINT NOT NULL REFERENCES rooms(id),
     start_time  TIMESTAMP NOT NULL,
