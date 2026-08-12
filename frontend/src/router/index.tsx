@@ -17,6 +17,7 @@ import BookingPage from '@/features/booking/pages/BookingPage'
 import PaymentPage from '@/features/payment/pages/PaymentPage'
 import TicketsPage from '@/features/ticket/pages/TicketsPage'
 import AdminDashboardPage from '@/features/admin/pages/AdminDashboardPage'
+import ShowtimeSelectionPage from '@/features/showtime/pages/ShowtimeSelectionPage'
 
 export default function AppRouter() {
   return (
@@ -35,6 +36,7 @@ export default function AppRouter() {
           {/* Public routes */}
           <Route path="/" element={<HomePage />} />
           <Route path="/movies/:slug" element={<MovieDetailPage />} />
+          <Route path="/showtimes" element={<ShowtimeSelectionPage />} />
 
           {/* Customer protected routes */}
           <Route element={<ProtectedRoute allowedRoles={['CUSTOMER', 'ADMIN', 'STAFF']} />}>
