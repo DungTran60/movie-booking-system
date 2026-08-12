@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react'
 import api from '@/services/api'
-import type { ApiResponse } from '@/types'
-import type { Movie, MoviePageResponse } from '@/features/movie/types'
-import type { CreateMoviePayload } from '@/features/admin/types'
+import type { ApiResponse, PaginatedResponse } from '@/types'
+import type { Movie, Genre } from '@/features/movie/types'
+import type { CreateMoviePayload } from '../types'
 
 export default function AdminMovieManager() {
   const [movies, setMovies] = useState<Movie[]>([])
-  const [search, setSearch] = useState<string>('')
-  const [searchInput, setSearchInput] = useState<string>('')
+  const [genres, setGenres] = useState<Genre[]>([])
   const [page, setPage] = useState<number>(0)
   const [totalPages, setTotalPages] = useState<number>(1)
+  const [search, setSearch] = useState<string>('')
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
@@ -20,43 +20,60 @@ export default function AdminMovieManager() {
   const [deletingMovie, setDeletingMovie] = useState<Movie | null>(null)
   const [submitting, setSubmitting] = useState<boolean>(false)
 
+  // TMDB Import state
+  const [tmdbId, setTmdbId] = useState<string>('')
+  const [importingTmdb, setImportingTmdb] = useState<boolean>(false)
+
   // Form states
   const [title, setTitle] = useState<string>('')
-  const [slug, setSlug] = useState<string>('')
   const [description, setDescription] = useState<string>('')
   const [duration, setDuration] = useState<number>(120)
   const [language, setLanguage] = useState<string>('Tiếng Việt')
   const [releaseDate, setReleaseDate] = useState<string>('')
-  const [posterUrl, setPosterUrl] = useState<string>('')
   const [trailerUrl, setTrailerUrl] = useState<string>('')
-  const [rating, setRating] = useState<string>('T18')
+  const [rating, setRating] = useState<string>('P')
+  const [posterUrl, setPosterUrl] = useState<string>('')
   const [status, setStatus] = useState<string>('NOW_SHOWING')
+  const [selectedGenreIds, setSelectedGenreIds] = useState<number[]>([])
 
   const fetchMovies = async () => {
     setLoading(true)
     setError(null)
     try {
-      const response = await api.get<ApiResponse<MoviePageResponse>>('/v1/movies', {
+      const response = await api.get<ApiResponse<PaginatedResponse<Movie>>>('/v1/admin/movies', {
         params: {
           page,
-          size: 6,
+          size: 8,
           search: search || undefined,
-          sort: 'createdAt,desc',
         },
       })
-      const envelope = response.data
-      if (envelope.status === 'SUCCESS' && envelope.data) {
-        setMovies(envelope.data.content || [])
-        setTotalPages(envelope.data.totalPages || 1)
+      if (response.data.status === 'SUCCESS' && response.data.data) {
+        setMovies(response.data.data.content || [])
+        setTotalPages(response.data.data.totalPages || 1)
       } else {
-        setError(envelope.message || 'Không thể tải danh sách phim')
+        setError(response.data.message || 'Không thể tải danh sách phim')
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Có lỗi xảy ra khi tải phim')
+      setError(err.response?.data?.message || 'Có lỗi xảy ra khi tải danh sách phim')
     } finally {
       setLoading(false)
     }
   }
+
+  const fetchGenres = async () => {
+    try {
+      const response = await api.get<ApiResponse<Genre[]>>('/v1/genres')
+      if (response.data.status === 'SUCCESS' && response.data.data) {
+        setGenres(response.data.data)
+      }
+    } catch (err) {
+      console.error('Error fetching genres:', err)
+    }
+  }
+
+  useEffect(() => {
+    fetchGenres()
+  }, [])
 
   useEffect(() => {
     fetchMovies()
@@ -65,47 +82,45 @@ export default function AdminMovieManager() {
   const handleOpenAddModal = () => {
     setEditingMovie(null)
     setTitle('')
-    setSlug('')
     setDescription('')
     setDuration(120)
     setLanguage('Tiếng Việt')
     setReleaseDate(new Date().toISOString().split('T')[0])
-    setPosterUrl('')
     setTrailerUrl('')
-    setRating('T18')
+    setRating('P')
+    setPosterUrl('')
     setStatus('NOW_SHOWING')
+    setSelectedGenreIds([])
     setShowModal(true)
   }
 
   const handleOpenEditModal = (movie: Movie) => {
     setEditingMovie(movie)
-    setTitle(movie.title || '')
-    setSlug(movie.slug || '')
+    setTitle(movie.title)
     setDescription('')
-    setDuration(movie.duration || 120)
+    setDuration(movie.duration)
     setLanguage(movie.language || 'Tiếng Việt')
     setReleaseDate(movie.releaseDate || '')
-    setPosterUrl(movie.posterUrl || '')
     setTrailerUrl('')
-    setRating(movie.rating || 'T18')
-    setStatus(movie.status || 'NOW_SHOWING')
-
-    // Fetch detail to get description and trailerUrl
-    api.get<ApiResponse<any>>(`/v1/movies/${movie.slug}`).then(res => {
-      if (res.data.status === 'SUCCESS' && res.data.data) {
-        const detail = res.data.data
-        setDescription(detail.description || '')
-        setTrailerUrl(detail.trailerUrl || '')
-      }
-    })
-
+    setRating(movie.rating || 'P')
+    setPosterUrl(movie.posterUrl || '')
+    setStatus(movie.status)
+    setSelectedGenreIds(movie.genres ? movie.genres.map((g: Genre) => g.id) : [])
     setShowModal(true)
+  }
+
+  const handleToggleGenre = (genreId: number) => {
+    if (selectedGenreIds.includes(genreId)) {
+      setSelectedGenreIds(selectedGenreIds.filter(id => id !== genreId))
+    } else {
+      setSelectedGenreIds([...selectedGenreIds, genreId])
+    }
   }
 
   const handleSubmitForm = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!title.trim() || duration <= 0) {
-      setError('Vui lòng nhập đầy đủ tiêu đề và thời lượng hợp lệ')
+    if (!title || duration <= 0) {
+      setError('Vui lòng nhập tên phim và thời lượng hợp lệ')
       return
     }
 
@@ -115,47 +130,83 @@ export default function AdminMovieManager() {
 
     const payload: CreateMoviePayload = {
       title,
-      slug: slug || undefined,
       description,
       duration: Number(duration),
       language,
       releaseDate: releaseDate || undefined,
-      posterUrl,
       trailerUrl,
       rating,
+      posterUrl,
       status,
     }
 
     try {
       if (editingMovie) {
-        await api.put(`/v1/admin/movies/${editingMovie.id}`, payload)
-        setSuccessMsg('Cập nhật thông tin phim thành công!')
+        const response = await api.put<ApiResponse<Movie>>(`/v1/admin/movies/${editingMovie.id}`, payload)
+        if (response.data.status === 'SUCCESS') {
+          setSuccessMsg(`Cập nhật phim "${title}" thành công!`)
+          setShowModal(false)
+          fetchMovies()
+        } else {
+          setError(response.data.message || 'Không thể cập nhật phim')
+        }
       } else {
-        await api.post('/v1/admin/movies', payload)
-        setSuccessMsg('Tạo phim mới thành công!')
+        const response = await api.post<ApiResponse<Movie>>('/v1/admin/movies', payload)
+        if (response.data.status === 'SUCCESS') {
+          setSuccessMsg(`Thêm phim mới "${title}" thành công!`)
+          setShowModal(false)
+          fetchMovies()
+        } else {
+          setError(response.data.message || 'Không thể thêm phim mới')
+        }
       }
-      setShowModal(false)
-      fetchMovies()
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Không thể lưu thông tin phim')
+      setError(err.response?.data?.message || 'Có lỗi xảy ra khi lưu phim')
     } finally {
       setSubmitting(false)
     }
   }
 
-  const handleConfirmSoftDelete = async () => {
+  const handleConfirmDelete = async () => {
     if (!deletingMovie) return
+
     setSubmitting(true)
     setError(null)
+    setSuccessMsg(null)
     try {
-      await api.delete(`/v1/admin/movies/${deletingMovie.id}`)
-      setSuccessMsg(`Đã chuyển phim "${deletingMovie.title}" sang trạng thái xóa (Soft Delete).`)
-      setDeletingMovie(null)
-      fetchMovies()
+      const response = await api.delete<ApiResponse<void>>(`/v1/admin/movies/${deletingMovie.id}`)
+      if (response.data.status === 'SUCCESS') {
+        setSuccessMsg(`Đã xóa mềm phim "${deletingMovie.title}" thành công.`)
+        setDeletingMovie(null)
+        fetchMovies()
+      } else {
+        setError(response.data.message || 'Không thể xóa phim')
+      }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Không thể xóa phim')
+      setError(err.response?.data?.message || 'Có lỗi xảy ra khi xóa phim')
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const handleImportTmdb = async () => {
+    if (!tmdbId.trim()) return
+    setImportingTmdb(true)
+    setError(null)
+    setSuccessMsg(null)
+    try {
+      const response = await api.post<ApiResponse<any>>(`/v1/admin/movies/import/tmdb/${tmdbId.trim()}`)
+      if (response.data.status === 'SUCCESS') {
+        setSuccessMsg(`Đã đồng bộ phim từ TMDB: ${response.data.data?.title || tmdbId}`)
+        setTmdbId('')
+        fetchMovies()
+      } else {
+        setError(response.data.message || 'Không thể import từ TMDB')
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Lỗi khi đồng bộ từ TMDB')
+    } finally {
+      setImportingTmdb(false)
     }
   }
 
@@ -164,61 +215,71 @@ export default function AdminMovieManager() {
       {/* Header Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#1B2140] p-5 rounded-xl border border-[#2A3157]">
         <div>
-          <h2 className="font-display text-xl font-bold text-[#F2EFE6]">🎬 Quản Lý Danh Sách Phim</h2>
-          <p className="text-xs text-[#B7BAC9] mt-0.5">Thêm mới, chỉnh sửa thông tin phim và soft-delete</p>
+          <h2 className="font-display text-xl font-bold text-[#F2EFE6]">Quản Lý Danh Sách Phim</h2>
+          <p className="text-xs text-[#B7BAC9] mt-0.5">Thêm mới, chỉnh sửa, xóa mềm và đồng bộ dữ liệu TMDB</p>
         </div>
 
-        <button
-          onClick={handleOpenAddModal}
-          className="bg-[#E8A33D] hover:bg-[#F2B655] text-[#12172B] font-semibold text-xs px-4 py-2.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shadow-md shadow-[#E8A33D]/10"
-        >
-          <span>➕</span> Thêm Phim Mới
-        </button>
+        <div className="flex items-center gap-3">
+          {/* TMDB Quick Import Input */}
+          <div className="flex items-center gap-1.5 bg-[#0D1120] border border-[#2A3157] rounded-lg p-1">
+            <input
+              type="text"
+              placeholder="TMDB ID (VD: 550)"
+              value={tmdbId}
+              onChange={e => setTmdbId(e.target.value)}
+              className="bg-transparent text-xs text-[#F2EFE6] px-2 py-1 focus:outline-none w-28"
+            />
+            <button
+              onClick={handleImportTmdb}
+              disabled={importingTmdb || !tmdbId.trim()}
+              className="bg-[#0D1120] hover:bg-[#1B2140] text-[#E8A33D] border border-[#E8A33D]/40 text-xs font-semibold px-2.5 py-1 rounded transition-colors disabled:opacity-50 cursor-pointer"
+            >
+              {importingTmdb ? 'Import...' : 'TMDB Import'}
+            </button>
+          </div>
+
+          <button
+            onClick={handleOpenAddModal}
+            className="bg-[#E8A33D] hover:bg-[#F2B655] text-[#12172B] font-semibold text-xs px-4 py-2.5 rounded-lg transition-all cursor-pointer shadow-md shadow-[#E8A33D]/10"
+          >
+            Thêm Phim Mới
+          </button>
+        </div>
       </div>
 
-      {/* Alert Messages */}
+      {/* Alerts */}
       {successMsg && (
         <div className="p-3.5 bg-[#5FA777]/15 border border-[#5FA777]/40 text-[#F2EFE6] text-xs rounded-lg flex items-center justify-between">
-          <span>🎉 {successMsg}</span>
+          <span>{successMsg}</span>
           <button onClick={() => setSuccessMsg(null)} className="text-[#5FA777] font-bold">✕</button>
         </div>
       )}
 
       {error && (
         <div className="p-3.5 bg-[#C1443F]/15 border border-[#C1443F]/40 text-[#F2EFE6] text-xs rounded-lg flex items-center justify-between">
-          <span>⚠️ {error}</span>
+          <span>{error}</span>
           <button onClick={() => setError(null)} className="text-[#C1443F] font-bold">✕</button>
         </div>
       )}
 
       {/* Search Bar */}
-      <form
-        onSubmit={e => {
-          e.preventDefault()
-          setPage(0)
-          setSearch(searchInput.trim())
-        }}
-        className="flex gap-2"
-      >
+      <div className="bg-[#0D1120] p-3 border border-[#2A3157] rounded-xl flex items-center gap-3">
         <input
           type="text"
-          value={searchInput}
-          onChange={e => setSearchInput(e.target.value)}
-          placeholder="Tìm theo tên phim..."
-          className="flex-1 bg-[#0D1120] border border-[#2A3157] text-[#F2EFE6] placeholder-[#565B72] text-xs px-3.5 py-2 rounded-lg focus:outline-none focus:border-[#E8A33D]"
+          placeholder="Tìm kiếm phim theo tên..."
+          value={search}
+          onChange={e => {
+            setSearch(e.target.value)
+            setPage(0)
+          }}
+          className="bg-transparent border-none text-xs text-[#F2EFE6] placeholder-[#565B72] focus:outline-none w-full px-2"
         />
-        <button
-          type="submit"
-          className="bg-[#1B2140] hover:border-[#E8A33D] border border-[#2A3157] text-[#F2EFE6] text-xs font-medium px-4 py-2 rounded-lg transition-colors cursor-pointer"
-        >
-          Tìm
-        </button>
-      </form>
+      </div>
 
-      {/* Movie List Table */}
+      {/* Movie Table */}
       {loading ? (
         <div className="py-12 text-center text-[#E8A33D] text-xs uppercase tracking-widest animate-pulse">
-          ⏳ Đang tải danh sách phim...
+          Đang tải danh sách phim...
         </div>
       ) : (
         <div className="bg-[#1B2140] border border-[#2A3157] rounded-xl overflow-hidden shadow-xl">
@@ -227,69 +288,88 @@ export default function AdminMovieManager() {
               <thead className="bg-[#0D1120] text-[#F2EFE6] uppercase text-[10px] tracking-wider border-b border-[#2A3157]">
                 <tr>
                   <th className="p-3.5">Poster</th>
-                  <th className="p-3.5">Tên phim</th>
-                  <th className="p-3.5">Thời lượng</th>
-                  <th className="p-3.5">Khởi chiếu</th>
-                  <th className="p-3.5">Độ tuổi</th>
-                  <th className="p-3.5">Trạng thái</th>
-                  <th className="p-3.5 text-right">Thao tác</th>
+                  <th className="p-3.5">Tên Phim</th>
+                  <th className="p-3.5">Thể Loại</th>
+                  <th className="p-3.5">Thời Lượng</th>
+                  <th className="p-3.5">Phân Loại</th>
+                  <th className="p-3.5">Trạng Thái</th>
+                  <th className="p-3.5 text-right">Thao Tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#2A3157]/60">
                 {movies.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="p-8 text-center text-[#565B72]">
-                      Không có phim nào được tìm thấy.
+                      Không tìm thấy phim nào.
                     </td>
                   </tr>
                 ) : (
                   movies.map(movie => (
                     <tr key={movie.id} className="hover:bg-[#0D1120]/50 transition-colors">
                       <td className="p-3.5">
-                        <div className="w-10 h-14 bg-[#0D1120] rounded border border-[#2A3157] overflow-hidden">
+                        <div className="w-10 h-14 rounded overflow-hidden bg-[#0D1120] border border-[#2A3157] shrink-0">
                           {movie.posterUrl ? (
                             <img src={movie.posterUrl} alt={movie.title} className="w-full h-full object-cover" />
                           ) : (
-                            <div className="w-full h-full flex items-center justify-center text-xs">🎬</div>
+                            <div className="w-full h-full flex items-center justify-center text-xs text-[#565B72]">Phim</div>
                           )}
                         </div>
                       </td>
-                      <td className="p-3.5">
-                        <span className="font-display font-medium text-[#F2EFE6] block">{movie.title}</span>
-                        <span className="text-[10px] text-[#565B72]">/{movie.slug}</span>
+
+                      <td className="p-3.5 font-display font-semibold text-[#F2EFE6]">
+                        {movie.title}
+                        <span className="block text-[10px] text-[#565B72] font-normal">{movie.language}</span>
                       </td>
-                      <td className="p-3.5">{movie.duration} phút</td>
-                      <td className="p-3.5">{movie.releaseDate || '—'}</td>
+
                       <td className="p-3.5">
-                        <span className="px-2 py-0.5 bg-[#0D1120] border border-[#2A3157] text-[#E8A33D] font-mono text-[10px] rounded">
+                        <div className="flex flex-wrap gap-1">
+                          {movie.genres && movie.genres.length > 0 ? (
+                            movie.genres.map((g: Genre) => (
+                              <span key={g.id} className="px-1.5 py-0.5 bg-[#0D1120] text-[#B7BAC9] border border-[#2A3157] text-[10px] rounded">
+                                {g.name}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-[#565B72]">-</span>
+                          )}
+                        </div>
+                      </td>
+
+                      <td className="p-3.5 font-mono">{movie.duration} phút</td>
+
+                      <td className="p-3.5">
+                        <span className="px-2 py-0.5 bg-[#0D1120] text-[#E8A33D] border border-[#2A3157] font-mono text-[10px] font-bold rounded">
                           {movie.rating || 'P'}
                         </span>
                       </td>
+
                       <td className="p-3.5">
                         <span
                           className={`px-2 py-0.5 text-[10px] font-bold rounded uppercase ${
                             movie.status === 'NOW_SHOWING'
+                              ? 'bg-[#5FA777]/20 text-[#5FA777] border border-[#5FA777]/40'
+                              : movie.status === 'COMING_SOON'
                               ? 'bg-[#E8A33D]/20 text-[#E8A33D] border border-[#E8A33D]/40'
-                              : movie.status === 'DELETED'
-                              ? 'bg-[#C1443F]/20 text-[#C1443F] border border-[#C1443F]/40'
-                              : 'bg-[#565B72]/20 text-[#B7BAC9] border border-[#565B72]/40'
+                              : 'bg-[#8C2F3A]/20 text-[#8C2F3A] border border-[#8C2F3A]/40'
                           }`}
                         >
-                          {movie.status}
+                          {movie.status === 'NOW_SHOWING' ? 'Đang chiếu' : movie.status === 'COMING_SOON' ? 'Sắp chiếu' : 'Đã dừng'}
                         </span>
                       </td>
+
                       <td className="p-3.5 text-right space-x-2">
                         <button
                           onClick={() => handleOpenEditModal(movie)}
-                          className="bg-[#0D1120] hover:border-[#E8A33D] border border-[#2A3157] text-[#E8A33D] px-2.5 py-1 rounded text-[11px] font-medium transition-colors cursor-pointer"
+                          className="px-2.5 py-1 bg-[#0D1120] hover:bg-[#2A3157] text-[#E8A33D] border border-[#2A3157] rounded text-[11px] transition-colors cursor-pointer"
                         >
-                          ✏️ Sửa
+                          Sửa
                         </button>
+
                         <button
                           onClick={() => setDeletingMovie(movie)}
-                          className="bg-[#8C2F3A]/20 hover:bg-[#8C2F3A] border border-[#8C2F3A]/50 text-[#F2EFE6] px-2.5 py-1 rounded text-[11px] font-medium transition-colors cursor-pointer"
+                          className="px-2.5 py-1 bg-[#8C2F3A]/20 hover:bg-[#8C2F3A]/40 text-[#8C2F3A] border border-[#8C2F3A]/50 rounded text-[11px] transition-colors cursor-pointer"
                         >
-                          🗑️ Xóa
+                          Xóa
                         </button>
                       </td>
                     </tr>
@@ -301,36 +381,38 @@ export default function AdminMovieManager() {
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="p-3.5 bg-[#0D1120] border-t border-[#2A3157] flex items-center justify-between text-xs">
-              <button
-                disabled={page === 0}
-                onClick={() => setPage(p => Math.max(p - 1, 0))}
-                className="px-3 py-1.5 bg-[#1B2140] border border-[#2A3157] rounded text-[#F2EFE6] disabled:opacity-40 cursor-pointer"
-              >
-                ← Trước
-              </button>
-              <span className="font-mono text-[#E8A33D]">Trang {page + 1} / {totalPages}</span>
-              <button
-                disabled={page >= totalPages - 1}
-                onClick={() => setPage(p => Math.min(p + 1, totalPages - 1))}
-                className="px-3 py-1.5 bg-[#1B2140] border border-[#2A3157] rounded text-[#F2EFE6] disabled:opacity-40 cursor-pointer"
-              >
-                Sau →
-              </button>
+            <div className="p-3.5 border-t border-[#2A3157] flex items-center justify-between text-xs bg-[#0D1120]">
+              <span className="text-[#565B72]">Trang {page + 1} / {totalPages}</span>
+              <div className="flex gap-2">
+                <button
+                  disabled={page === 0}
+                  onClick={() => setPage(p => Math.max(0, p - 1))}
+                  className="px-3 py-1 bg-[#1B2140] border border-[#2A3157] rounded text-[#B7BAC9] disabled:opacity-50 cursor-pointer"
+                >
+                  Trước
+                </button>
+                <button
+                  disabled={page >= totalPages - 1}
+                  onClick={() => setPage(p => p + 1)}
+                  className="px-3 py-1 bg-[#1B2140] border border-[#2A3157] rounded text-[#B7BAC9] disabled:opacity-50 cursor-pointer"
+                >
+                  Sau
+                </button>
+              </div>
             </div>
           )}
         </div>
       )}
 
-      {/* Add / Edit Movie Modal */}
+      {/* Add / Edit Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 bg-[#12172B]/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#1B2140] border border-[#2A3157] rounded-xl max-w-xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto marquee-glow relative">
+          <div className="bg-[#1B2140] border border-[#2A3157] rounded-xl max-w-xl w-full p-6 shadow-2xl max-h-[90vh] overflow-y-auto space-y-4 relative">
             <div className="flex items-center justify-between border-b border-[#2A3157] pb-3">
               <h3 className="font-display font-bold text-lg text-[#F2EFE6]">
-                {editingMovie ? '✏️ Cập Nhật Phim' : '🎬 Thêm Phim Mới'}
+                {editingMovie ? 'Cập Nhật Phim' : 'Thêm Phim Mới'}
               </h3>
-              <button onClick={() => setShowModal(false)} className="text-[#B7BAC9] hover:text-[#F2EFE6]">✕</button>
+              <button onClick={() => setShowModal(false)} className="text-[#B7BAC9] hover:text-[#F2EFE6] cursor-pointer">✕</button>
             </div>
 
             <form onSubmit={handleSubmitForm} className="space-y-3.5 text-xs">
@@ -341,8 +423,8 @@ export default function AdminMovieManager() {
                   required
                   value={title}
                   onChange={e => setTitle(e.target.value)}
-                  placeholder="Ví dụ: Avengers: Endgame"
                   className="w-full bg-[#0D1120] border border-[#2A3157] text-[#F2EFE6] px-3 py-2 rounded-lg focus:border-[#E8A33D] focus:outline-none"
+                  placeholder="Ví dụ: Avengers: Endgame"
                 />
               </div>
 
@@ -355,90 +437,104 @@ export default function AdminMovieManager() {
                     min={1}
                     value={duration}
                     onChange={e => setDuration(Number(e.target.value))}
-                    className="w-full bg-[#0D1120] border border-[#2A3157] text-[#F2EFE6] px-3 py-2 rounded-lg focus:border-[#E8A33D] focus:outline-none"
+                    className="w-full bg-[#0D1120] border border-[#2A3157] text-[#F2EFE6] px-3 py-2 rounded-lg focus:border-[#E8A33D] focus:outline-none font-mono"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-[#B7BAC9] mb-1 font-medium">Phân loại tuổi</label>
+                  <label className="block text-[#B7BAC9] mb-1 font-medium">Phân loại khán giả</label>
                   <select
                     value={rating}
                     onChange={e => setRating(e.target.value)}
                     className="w-full bg-[#0D1120] border border-[#2A3157] text-[#F2EFE6] px-3 py-2 rounded-lg focus:border-[#E8A33D] focus:outline-none"
                   >
-                    <option value="P">P - Phổ biến</option>
-                    <option value="K">K - Dưới 13 tuổi</option>
-                    <option value="T13">T13 - Trên 13 tuổi</option>
-                    <option value="T16">T16 - Trên 16 tuổi</option>
-                    <option value="T18">T18 - Trên 18 tuổi</option>
+                    <option value="P">P - Phổ biến mọi độ tuổi</option>
+                    <option value="K">K - Dưới 13 tuổi cùng cha mẹ</option>
+                    <option value="T13">T13 - Khán giả từ 13 tuổi</option>
+                    <option value="T16">T16 - Khán giả từ 16 tuổi</option>
+                    <option value="T18">T18 - Khán giả từ 18 tuổi</option>
                   </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[#B7BAC9] mb-1 font-medium">Thể loại phim</label>
+                <div className="flex flex-wrap gap-1.5 p-2 bg-[#0D1120] border border-[#2A3157] rounded-lg max-h-28 overflow-y-auto">
+                  {genres.map(genre => {
+                    const isSelected = selectedGenreIds.includes(genre.id)
+                    return (
+                      <button
+                        type="button"
+                        key={genre.id}
+                        onClick={() => handleToggleGenre(genre.id)}
+                        className={`px-2.5 py-1 rounded text-[11px] border transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-[#E8A33D] text-[#12172B] border-[#E8A33D] font-bold'
+                            : 'bg-[#1B2140] text-[#B7BAC9] border-[#2A3157] hover:text-[#F2EFE6]'
+                        }`}
+                      >
+                        {genre.name}
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[#B7BAC9] mb-1 font-medium">Ngôn ngữ</label>
+                  <label className="block text-[#B7BAC9] mb-1 font-medium">Ngày khởi chiếu</label>
                   <input
-                    type="text"
-                    value={language}
-                    onChange={e => setLanguage(e.target.value)}
-                    placeholder="Tiếng Việt / Phụ đề"
+                    type="date"
+                    value={releaseDate}
+                    onChange={e => setReleaseDate(e.target.value)}
                     className="w-full bg-[#0D1120] border border-[#2A3157] text-[#F2EFE6] px-3 py-2 rounded-lg focus:border-[#E8A33D] focus:outline-none"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-[#B7BAC9] mb-1 font-medium">Trạng thái</label>
+                  <label className="block text-[#B7BAC9] mb-1 font-medium">Trạng thái phát hành</label>
                   <select
                     value={status}
                     onChange={e => setStatus(e.target.value)}
                     className="w-full bg-[#0D1120] border border-[#2A3157] text-[#F2EFE6] px-3 py-2 rounded-lg focus:border-[#E8A33D] focus:outline-none"
                   >
-                    <option value="NOW_SHOWING">NOW_SHOWING (Đang chiếu)</option>
-                    <option value="COMING">COMING (Sắp chiếu)</option>
-                    <option value="ENDED">ENDED (Đã kết thúc)</option>
+                    <option value="NOW_SHOWING">Đang chiếu (NOW_SHOWING)</option>
+                    <option value="COMING_SOON">Sắp chiếu (COMING_SOON)</option>
+                    <option value="END_SHOWING">Đã dừng chiếu (END_SHOWING)</option>
                   </select>
                 </div>
               </div>
 
               <div>
-                <label className="block text-[#B7BAC9] mb-1 font-medium">Ngày khởi chiếu</label>
+                <label className="block text-[#B7BAC9] mb-1 font-medium">URL Poster (Ảnh)</label>
                 <input
-                  type="date"
-                  value={releaseDate}
-                  onChange={e => setReleaseDate(e.target.value)}
-                  className="w-full bg-[#0D1120] border border-[#2A3157] text-[#F2EFE6] px-3 py-2 rounded-lg focus:border-[#E8A33D] focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[#B7BAC9] mb-1 font-medium">URL Ảnh Poster</label>
-                <input
-                  type="text"
+                  type="url"
                   value={posterUrl}
                   onChange={e => setPosterUrl(e.target.value)}
-                  placeholder="https://example.com/poster.jpg"
                   className="w-full bg-[#0D1120] border border-[#2A3157] text-[#F2EFE6] px-3 py-2 rounded-lg focus:border-[#E8A33D] focus:outline-none"
+                  placeholder="https://image.tmdb.org/t/p/w500/..."
                 />
               </div>
 
               <div>
                 <label className="block text-[#B7BAC9] mb-1 font-medium">URL Trailer (Youtube)</label>
                 <input
-                  type="text"
+                  type="url"
                   value={trailerUrl}
                   onChange={e => setTrailerUrl(e.target.value)}
-                  placeholder="https://www.youtube.com/watch?v=..."
                   className="w-full bg-[#0D1120] border border-[#2A3157] text-[#F2EFE6] px-3 py-2 rounded-lg focus:border-[#E8A33D] focus:outline-none"
+                  placeholder="https://www.youtube.com/watch?v=..."
                 />
               </div>
 
               <div>
-                <label className="block text-[#B7BAC9] mb-1 font-medium">Mô tả nội dung phim</label>
+                <label className="block text-[#B7BAC9] mb-1 font-medium">Mô tả tóm tắt</label>
                 <textarea
                   rows={3}
                   value={description}
                   onChange={e => setDescription(e.target.value)}
-                  placeholder="Nhập tóm tắt nội dung..."
-                  className="w-full bg-[#0D1120] border border-[#2A3157] text-[#F2EFE6] px-3 py-2 rounded-lg focus:border-[#E8A33D] focus:outline-none"
+                  className="w-full bg-[#0D1120] border border-[#2A3157] text-[#F2EFE6] px-3 py-2 rounded-lg focus:border-[#E8A33D] focus:outline-none resize-none"
+                  placeholder="Nội dung tóm tắt bộ phim..."
                 />
               </div>
 
@@ -467,10 +563,9 @@ export default function AdminMovieManager() {
       {deletingMovie && (
         <div className="fixed inset-0 z-50 bg-[#12172B]/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[#1B2140] border border-[#2A3157] rounded-xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl">
-            <div className="text-4xl">⚠️</div>
-            <h3 className="font-display font-bold text-base text-[#F2EFE6]">Xác Nhận Xóa Mềm Phim</h3>
+            <h3 className="font-display font-bold text-base text-[#F2EFE6]">Xác Nhận Xóa Phim</h3>
             <p className="text-xs text-[#B7BAC9]">
-              Bạn có chắc chắn muốn xóa phim <span className="text-[#E8A33D] font-semibold">"{deletingMovie.title}"</span>? Trạng thái sẽ được đổi thành <span className="font-mono text-[#C1443F]">DELETED</span>.
+              Bạn có chắc chắn muốn xóa mềm phim <span className="text-[#E8A33D] font-semibold">"{deletingMovie.title}"</span>?
             </p>
 
             <div className="flex justify-center gap-3 pt-2">
@@ -481,7 +576,7 @@ export default function AdminMovieManager() {
                 Hủy Bỏ
               </button>
               <button
-                onClick={handleConfirmSoftDelete}
+                onClick={handleConfirmDelete}
                 disabled={submitting}
                 className="bg-[#8C2F3A] hover:bg-[#A63530] text-[#F2EFE6] font-semibold px-4 py-2 rounded-lg text-xs cursor-pointer disabled:opacity-50"
               >
