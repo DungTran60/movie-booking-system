@@ -33,12 +33,13 @@ public class GlobalExceptionHandler {
             status = HttpStatus.FORBIDDEN;
         } else if (code == ErrorCode.RESOURCE_NOT_FOUND) {
             status = HttpStatus.NOT_FOUND;
-        } else if (code == ErrorCode.SHOWTIME_OVERLAP) {
+        } else if (code == ErrorCode.SHOWTIME_OVERLAP ||
+                   code == ErrorCode.SEAT_ALREADY_LOCKED ||
+                   code == ErrorCode.SEAT_ALREADY_BOOKED) {
             status = HttpStatus.CONFLICT;
         } else if (code == ErrorCode.RATE_LIMIT_EXCEEDED) {
             status = HttpStatus.TOO_MANY_REQUESTS;
         }
-
 
         ApiResponse<Void> response = ApiResponse.error(code, ex.getMessage());
         return new ResponseEntity<>(response, status);
@@ -84,7 +85,6 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleGenericException(Exception ex) {
-        // Hides stack traces from client responses to ensure security compliance
         ApiResponse<Void> response = ApiResponse.error(
                 ErrorCode.INTERNAL_SERVER_ERROR,
                 "An unexpected internal server error occurred"
