@@ -9,4 +9,5 @@ import java.util.List;
 @Repository
 public interface SeatLockRepository extends JpaRepository<SeatLock, Long> {
     List<SeatLock> findByShowtimeIdAndSeatIdIn(Long showtimeId, List<Long> seatIds);
+    List<SeatLock> findByStatusAndExpiresAtBefore(String status, java.time.LocalDateTime cutoffTime);
 }
