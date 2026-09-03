@@ -33,6 +33,11 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 
+import com.moviebooking.payment.entity.Payment;
+import com.moviebooking.payment.entity.PaymentStatus;
+import com.moviebooking.payment.repository.PaymentRepository;
+import com.moviebooking.payment.service.PaymentGatewayService;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -46,6 +51,9 @@ public class BookingService {
     private final UserRepository userRepository;
     private final RedisSeatLockService redisSeatLockService;
     private final BookingMapper bookingMapper;
+    private final PaymentRepository paymentRepository;
+    private final PaymentGatewayService paymentGatewayService;
+    private final SeatWebSocketService seatWebSocketService;
 
     private static final List<BookingStatus> ACTIVE_BOOKING_STATUSES = Arrays.asList(
             BookingStatus.PENDING,
@@ -169,6 +177,64 @@ public class BookingService {
 
         LocalDateTime expiresAt = booking.getCreatedAt().plusSeconds(redisSeatLockService.getLockTtlSeconds());
         return bookingMapper.toResponse(booking, expiresAt);
+    }
+
+    @Transactional
+    public BookingResponse cancelBooking(Long bookingId, Long userId) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND, "Booking not found with id: " + bookingId));
+
+        // 1. Verify user ownership
+        if (!booking.getUser().getId().equals(userId)) {
+            throw new AppException(ErrorCode.FORBIDDEN, "Access denied: You can only cancel your own bookings");
+        }
+
+        // 2. Validate booking status is CONFIRMED
+        if (booking.getStatus() != BookingStatus.CONFIRMED) {
+            throw new AppException(ErrorCode.VALIDATION_ERROR, "Chỉ có thể huỷ đơn hàng khi trạng thái là CONFIRMED (Hiện tại: " + booking.getStatus() + ")");
+        }
+
+        // 3. Validate cancellation time (minimum 2 hours before showtime)
+        LocalDateTime now = LocalDateTime.now();
+        if (now.plusHours(2).isAfter(booking.getShowtime().getStartTime())) {
+            throw new AppException(ErrorCode.VALIDATION_ERROR, "Không thể huỷ vé trong vòng 2 giờ trước suất chiếu");
+        }
+
+        // 4. Refund gateway flow
+        paymentRepository.findByBookingId(booking.getId()).ifPresent(payment -> {
+            if (payment.getStatus() == PaymentStatus.COMPLETED) {
+                boolean refunded = paymentGatewayService.refund(payment.getTransactionId(), payment.getAmount());
+                if (refunded) {
+                    payment.setStatus(PaymentStatus.REFUNDED);
+                    paymentRepository.save(payment);
+                } else {
+                    log.error("Payment refund gateway call failed for booking {}", booking.getId());
+                    throw new AppException(ErrorCode.INTERNAL_SERVER_ERROR, "Refund gateway failed to process refund");
+                }
+            }
+        });
+
+        // 5. Release seats
+        List<Long> seatIds = booking.getBookingSeats().stream()
+                .map(bs -> bs.getSeat().getId())
+                .toList();
+        Long showtimeId = booking.getShowtime().getId();
+
+        // Delete booking seats to lift DB unique constraint
+        bookingSeatRepository.deleteAll(booking.getBookingSeats());
+        booking.getBookingSeats().clear();
+
+        // Release Redis locks if any
+        redisSeatLockService.releaseSeatLocks(showtimeId, seatIds);
+
+        // Broadcast WebSocket event SEAT_RELEASED
+        seatWebSocketService.broadcastSeatReleased(showtimeId, seatIds);
+
+        // 6. Update booking status to CANCELLED
+        booking.setStatus(BookingStatus.CANCELLED);
+        Booking savedBooking = bookingRepository.save(booking);
+
+        return bookingMapper.toResponse(savedBooking, null);
     }
 
     private BigDecimal calculateSeatPrice(BigDecimal basePrice, String seatType) {

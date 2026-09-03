@@ -43,4 +43,14 @@ public class BookingController {
         BookingResponse response = bookingService.getBookingDetails(id, currentUser.getId(), isAdmin);
         return ResponseEntity.ok(ApiResponse.success(response, "Booking details retrieved successfully"));
     }
+
+    @PostMapping("/{id}/cancel")
+    @PreAuthorize("hasAnyRole('CUSTOMER', 'ADMIN')")
+    public ResponseEntity<ApiResponse<BookingResponse>> cancelBooking(
+            @PathVariable Long id,
+            @AuthenticationPrincipal User currentUser
+    ) {
+        BookingResponse response = bookingService.cancelBooking(id, currentUser.getId());
+        return ResponseEntity.ok(ApiResponse.success(response, "Booking cancelled and refund processed successfully"));
+    }
 }
