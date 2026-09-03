@@ -5,6 +5,10 @@ import com.moviebooking.auth.dto.LoginRequest;
 import com.moviebooking.auth.dto.RegisterRequest;
 import com.moviebooking.booking.dto.BookingResponse;
 import com.moviebooking.booking.dto.CreateBookingRequest;
+import com.moviebooking.booking.entity.Booking;
+import com.moviebooking.booking.entity.BookingStatus;
+import com.moviebooking.booking.job.ExpirePendingBookingJob;
+import com.moviebooking.booking.repository.BookingRepository;
 import com.moviebooking.booking.service.RedisSeatLockService;
 import com.moviebooking.cinema.dto.request.CreateCinemaRequest;
 import com.moviebooking.cinema.dto.request.CreateRoomRequest;
@@ -16,6 +20,9 @@ import com.moviebooking.cinema.repository.SeatRepository;
 import com.moviebooking.common.dto.response.ApiResponse;
 import com.moviebooking.movie.dto.request.CreateMovieRequest;
 import com.moviebooking.movie.dto.response.MovieDetailResponse;
+import com.moviebooking.payment.entity.Payment;
+import com.moviebooking.payment.entity.PaymentStatus;
+import com.moviebooking.payment.repository.PaymentRepository;
 import com.moviebooking.showtime.dto.CreateShowtimeRequest;
 import com.moviebooking.showtime.dto.ShowtimeResponse;
 import org.junit.jupiter.api.DisplayName;
@@ -64,11 +71,20 @@ class BookingIntegrationTest {
     @Autowired
     private SeatRepository seatRepository;
 
+    @Autowired
+    private BookingRepository bookingRepository;
+
+    @Autowired
+    private PaymentRepository paymentRepository;
+
+    @Autowired
+    private ExpirePendingBookingJob expirePendingBookingJob;
+
     @MockBean
     private RedisSeatLockService redisSeatLockService;
 
     @Test
-    @DisplayName("Complete booking lifecycle: Register customer, lock seats (201 Created), fetch details (200 OK), double booking prevention (409 Conflict)")
+    @DisplayName("Complete booking lifecycle: Register, lock seats, check details, double booking 409, expiry frees seats, cancel CONFIRMED with refund")
     void bookingFlow_IntegrationTest() {
         // Step 0: Login as Admin
         LoginRequest loginReq = new LoginRequest();
@@ -143,8 +159,9 @@ class BookingIntegrationTest {
         List<Seat> roomSeats = seatRepository.findByRoomId(roomId);
         assertFalse(roomSeats.isEmpty());
         Long seatId1 = roomSeats.get(0).getId();
+        Long seatId2 = roomSeats.get(1).getId();
 
-        // Step 4: Create Showtime
+        // Step 4: Create Showtime (Starts tomorrow at 19:00 -> well over 2 hours away)
         CreateShowtimeRequest showtimeReq = new CreateShowtimeRequest();
         showtimeReq.setMovieId(movieId);
         showtimeReq.setRoomId(roomId);
@@ -247,5 +264,52 @@ class BookingIntegrationTest {
         );
 
         assertEquals(HttpStatus.FORBIDDEN, forbiddenResp.getStatusCode());
+
+        // Step 10: Test ExpirePendingBookingJob releases seats
+        // Simulate TTL expiry by setting lock TTL to 0 in mock and running job
+        when(redisSeatLockService.getLockTtlSeconds()).thenReturn(0L);
+        expirePendingBookingJob.expirePendingBookings();
+
+        Booking expiredBooking = bookingRepository.findById(bookingId1).orElseThrow();
+        assertEquals(BookingStatus.EXPIRED, expiredBooking.getStatus());
+
+        // Now Customer 2 can successfully book seatId1!
+        when(redisSeatLockService.getLockTtlSeconds()).thenReturn(300L);
+        ResponseEntity<ApiResponse<BookingResponse>> cust2SuccessResp = restTemplate.exchange(
+                "/api/v1/bookings",
+                HttpMethod.POST,
+                new HttpEntity<>(bookingReq1, cust2Headers),
+                new ParameterizedTypeReference<>() {}
+        );
+        assertEquals(HttpStatus.CREATED, cust2SuccessResp.getStatusCode());
+        Long bookingId2 = cust2SuccessResp.getBody().getData().getId();
+
+        // Step 11: Confirm bookingId2 and attach a COMPLETED payment, then test cancellation with refund
+        Booking booking2 = bookingRepository.findById(bookingId2).orElseThrow();
+        booking2.setStatus(BookingStatus.CONFIRMED);
+        bookingRepository.save(booking2);
+
+        Payment payment = Payment.builder()
+                .booking(booking2)
+                .tenant(booking2.getTenant())
+                .amount(booking2.getTotalAmount())
+                .paymentMethod("MOCK")
+                .transactionId("MOCK_TXN_" + bookingId2)
+                .status(PaymentStatus.COMPLETED)
+                .build();
+        paymentRepository.save(payment);
+
+        ResponseEntity<ApiResponse<BookingResponse>> cancelResp = restTemplate.exchange(
+                "/api/v1/bookings/" + bookingId2 + "/cancel",
+                HttpMethod.POST,
+                new HttpEntity<>(cust2Headers),
+                new ParameterizedTypeReference<>() {}
+        );
+
+        assertEquals(HttpStatus.OK, cancelResp.getStatusCode());
+        assertEquals(BookingStatus.CANCELLED, cancelResp.getBody().getData().getStatus());
+
+        Payment refundedPayment = paymentRepository.findByBookingId(bookingId2).orElseThrow();
+        assertEquals(PaymentStatus.REFUNDED, refundedPayment.getStatus());
     }
 }
